@@ -16,4 +16,6 @@ def clean():
 
 @pytest.fixture
 def client(tmp_path):
-    return create_app(tmp_path / 'archive').test_client()
+    app = create_app(tmp_path / 'archive')
+    app.config['CREDENTIALS'] = str(tmp_path / 'credentials')
+    return app.test_client()

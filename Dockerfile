@@ -3,5 +3,5 @@ WORKDIR /opt/pectin
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-ENV PECTIN_ARCHIVE=/var/pectin PYTHONDONTWRITEBYTECODE=1
+ENV PECTIN_ARCHIVE=/var/pectin/archive PECTIN_CREDENTIALS=/var/pectin/credentials PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "-m", "flask", "--app", "app.main", "run", "--host=0.0.0.0", "--port=8000"]

@@ -1,6 +1,39 @@
 <section class="panel workstation">
-  <h3>{{ '试算批记录' if stage == 'batches' else '试配签发记录' }}</h3>
-  {% if record %}<p role="status">{{ '已归档' if fresh else '已复用' }} {{ record.batch_id[:12] }}</p>{% endif %}
-  {% if pack %}<p>{{ '可试配' if pack.can_trial else '试配暂缓' }} · {{ pack.stock_lines }} 库存行 · {{ pack.isolation_lines }} 隔离行</p><p class="digest">{{ pack.integrity_sha256 }}</p><a class="download" href="/api/export/{{ pack.batch_id }}">下载配料证据</a>{% endif %}
-  <div class="sheet"><table><thead><tr><th>试算批</th><th>建立时间 UTC</th><th>耗时 (ms)</th></tr></thead><tbody>{% for row in entries %}<tr><td><a href="/trial/certificate?batch={{ row.batch_id }}">{{ row.batch_id[:16] }}</a></td><td>{{ row.created_at }}</td><td class="num">{{ row.elapsed_ms }}</td></tr>{% else %}<tr><td colspan="3"><a href="/trial/batches">先留档一批试配。</a></td></tr>{% endfor %}</tbody></table></div>
+  <h3>{{ '试算批记录' if stage == 'batches' else '试配凭据签发' }}</h3>
+  {% if record %}<p role="status">{{ '已归档' if fresh else '已复用' }} {{ record.batch_id[:12] }} · 留档原件可随时复查</p>{% endif %}
+  {% if stage == 'certificate' and pack %}
+    <article class="panel credential">
+      <div class="bench-head"><h4>凭据明细 · {{ pack.batch_id[:12] }}</h4>
+        {% if pack.envelope %}<span class="state {{ 'pass' if pack.envelope.status == 'ISSUED' else 'fail' }}">{{ pack.envelope.status }}</span>
+        {% else %}<span class="state {{ 'pass' if pack.passed else 'fail' }}">{{ '可签发' if pack.passed else '门槛未达' }}</span>{% endif %}
+      </div>
+      {% if pack.envelope %}<p class="digest">凭据号 {{ pack.envelope.credential_id }}</p>
+        <p>签发 {{ pack.envelope.issued_at }}{% if pack.envelope.revoked_at %} · 撤回 {{ pack.envelope.revoked_at }}{% endif %}</p>{% endif %}
+      {% set p = pack.payload %}
+      <dl class="kpis">
+        <div><dt>称量 g</dt><dd>{{ p.totals.mass_g }} / {{ p.plan.target_g }}</dd></div>
+        <div><dt>干物 g</dt><dd>{{ p.totals.dry_g }} ≥ {{ p.plan.dry_min_g }}</dd></div>
+        <div><dt>凝胶 SAG</dt><dd>{{ p.totals.gel_sag }} ∈ [{{ p.plan.gel_low_sag }}, {{ p.plan.gel_high_sag }}]</dd></div>
+        <div><dt>领用对账</dt><dd>{{ '通过' if p.reconcile.balanced and p.reconcile.shortage_g == 0 else '未通过' }}</dd></div>
+      </dl>
+      <div class="checks">{% for key,label in {'mass':'称量','dry':'干物','gel_low':'凝胶下限','gel_high':'凝胶上限','reconciled':'领用对账'}.items() %}
+        <span class="{{ 'pass' if p.checks[key] else 'fail' }}">{{ label }} {{ '合格' if p.checks[key] else '偏离' }}</span>{% endfor %}
+      </div>
+      <details><summary>客户独立复算所需数据（无批号、无逐批化验/库存）</summary><pre class="digest">{{ p | tojson(indent=2) }}</pre></details>
+      {% if not p.can_issue %}<p class="fault" role="alert">门槛未达：{{ p.blocking | join(' · ') }}，不可签发。</p>{% endif %}
+      <form method="post" action="/trial/certificate?batch={{ pack.batch_id }}" class="actions">
+        <input type="hidden" name="batch_id" value="{{ pack.batch_id }}">
+        {% if not pack.envelope %}<button name="action" value="issue" {{ 'disabled' if not p.can_issue }}>签发凭据</button>
+        {% elif pack.envelope.status == 'ISSUED' %}<a class="download" href="/api/download/{{ pack.batch_id }}">下载有效凭据</a>
+          <button name="action" value="revoke" class="danger">撤回凭据</button>
+        {% else %}<p class="fault" role="alert">凭据已撤回，下载已停止；留档仍可在 <a href="/api/batches/{{ pack.batch_id }}">留档原件</a> 复查。</p>{% endif %}
+      </form>
+    </article>
+  {% endif %}
+  <div class="sheet"><table><thead><tr><th>试算批</th><th>建立时间 UTC</th><th>耗时 (ms)</th>{% if stage == 'certificate' %}<th>凭据状态</th><th></th>{% endif %}</tr></thead><tbody>
+  {% for row in entries %}<tr><td><a href="/trial/{{ stage }}{% if stage == 'certificate' %}?batch={{ row.batch_id }}{% endif %}">{{ row.batch_id[:16] }}</a></td><td>{{ row.created_at }}</td><td class="num">{{ row.elapsed_ms }}</td>
+    {% if stage == 'certificate' %}<td>{% if row.credential %}<span class="state {{ 'pass' if row.credential.status == 'ISSUED' else 'fail' }}">{{ row.credential.status }}</span>{% else %}未签发{% endif %}</td>
+    <td>{% if row.credential and row.credential.status == 'ISSUED' %}<a href="/api/download/{{ row.batch_id }}">下载</a>{% elif row.credential %}已停止{% else %}—{% endif %}</td>{% endif %}
+  </tr>{% else %}<tr><td colspan="{{ 5 if stage == 'certificate' else 3 }}"><a href="/trial/batches">先留档一批试配。</a></td></tr>{% endfor %}
+  </tbody></table></div>
 </section>
